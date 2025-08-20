@@ -1,0 +1,31 @@
+#!/bin/bash
+
+prompt=$*
+
+file_id=$(uuidgen)
+
+echo "File_id: $file_id"
+file_path="/home/jwilliams/pictures/wallpaper/automated/$file_id.png"
+
+echo "File Path: $file_path"
+
+cfg_scale=8.0
+seed=$RANDOM
+
+aws bedrock-runtime invoke-model \
+--model-id amazon.nova-canvas-v1:0 \
+--body "{\"textToImageParams\":{\"text\":\"$prompt\",\"negativeText\":\"do not include textual data of any kind\"},\"taskType\":\"TEXT_IMAGE\",\"imageGenerationConfig\":{\"cfgScale\":$cfg_scale,\"seed\":$seed,\"width\":2720,\"height\":1520,\"numberOfImages\":3}}" \
+--cli-binary-format raw-in-base64-out \
+--region us-east-1 \
+--profile sandbox \
+invoke-model-output.txt
+
+jq -r '.images[0]' ./invoke-model-output.txt | base64 -d > "$file_path"
+
+rm invoke-model-output.txt
+
+kitten icat $file_path
+
+gsettings set org.gnome.desktop.background picture-uri "file:///$file_path"
+gsettings set org.gnome.desktop.background picture-uri-dark "file:///$file_path"
+
