@@ -1,31 +1,146 @@
 #!/bin/bash
 
-prompt=$*
+set -euo pipefail
 
-file_id=$(uuidgen)
+CONFIG_DIR="$HOME/.local/etc"
+CONFIG_FILE="$CONFIG_DIR/new-wallpaper.conf"
 
-echo "File_id: $file_id"
-file_path="/home/jwilliams/pictures/wallpaper/automated/$file_id.png"
+get_xdg_pictures_dir() {
+    if command -v xdg-user-dir &> /dev/null; then
+        xdg-user-dir PICTURES
+    else
+        echo "$HOME/Pictures"
+    fi
+}
 
-echo "File Path: $file_path"
+load_config() {
+    if [[ -f "$CONFIG_FILE" ]]; then
+        source "$CONFIG_FILE"
+    fi
+}
 
-cfg_scale=8.0
-seed=$RANDOM
+prompt_for_directory() {
+    local xdg_pictures_dir
+    xdg_pictures_dir=$(get_xdg_pictures_dir)
+    local default_dir="$xdg_pictures_dir/wallpapers"
+    
+    echo "Welcome to new-wallpaper! Let's set up your wallpaper directory."
+    echo ""
+    echo "Please enter the directory for storing wallpapers (use Tab for completion):"
+    echo "Default: $default_dir"
+    echo -n "Directory: "
+    
+    read -e -i "$default_dir" -r selected_dir
+    
+    selected_dir="${selected_dir/#\~/$HOME}"
+    
+    if [[ ! -d "$selected_dir" ]]; then
+        echo ""
+        echo "Directory '$selected_dir' does not exist."
+        echo -n "Would you like to create it? [Y/n]: "
+        read -r create_response
+        
+        if [[ -z "$create_response" || "$create_response" =~ ^[Yy] ]]; then
+            mkdir -p "$selected_dir"
+            echo "Created directory: $selected_dir"
+        else
+            echo "Please run the script again with a valid directory."
+            exit 1
+        fi
+    fi
+    
+    WALLPAPER_DIR="$selected_dir"
+    
+    mkdir -p "$CONFIG_DIR"
+    cat > "$CONFIG_FILE" << EOF
+# new-wallpaper configuration file
+# Generated on $(date)
 
-aws bedrock-runtime invoke-model \
---model-id amazon.nova-canvas-v1:0 \
---body "{\"textToImageParams\":{\"text\":\"$prompt\",\"negativeText\":\"do not include textual data of any kind\"},\"taskType\":\"TEXT_IMAGE\",\"imageGenerationConfig\":{\"cfgScale\":$cfg_scale,\"seed\":$seed,\"width\":2720,\"height\":1520,\"numberOfImages\":3}}" \
---cli-binary-format raw-in-base64-out \
---region us-east-1 \
---profile sandbox \
-invoke-model-output.txt
+# Directory for wallpaper storage
+WALLPAPER_DIR="$WALLPAPER_DIR"
+EOF
+    
+    echo ""
+    echo "Configuration saved to: $CONFIG_FILE"
+    echo "Using directory: $WALLPAPER_DIR"
+    echo ""
+}
 
-jq -r '.images[0]' ./invoke-model-output.txt | base64 -d > "$file_path"
+main() {
+    if [[ $# -eq 0 ]]; then
+        echo "Usage: $(basename "$0") <prompt>"
+        echo "Example: $(basename "$0") \"a serene mountain landscape at sunset\""
+        exit 1
+    fi
+    
+    load_config
+    
+    if [[ -z "${WALLPAPER_DIR:-}" ]]; then
+        prompt_for_directory
+    fi
+    
+    if [[ ! -d "$WALLPAPER_DIR" ]]; then
+        mkdir -p "$WALLPAPER_DIR"
+        echo "Created wallpaper directory: $WALLPAPER_DIR"
+    fi
+    
+    prompt="$*"
+    file_id=$(uuidgen)
+    
+    echo "Generating wallpaper with prompt: $prompt"
+    echo "File ID: $file_id"
+    
+    file_path="$WALLPAPER_DIR/${file_id}.png"
+    
+    echo "File Path: $file_path"
+    echo ""
+    
+    cfg_scale=8.0
+    seed=$RANDOM
+    
+    echo "Calling AWS Bedrock API..."
+    aws bedrock-runtime invoke-model \
+        --model-id amazon.nova-canvas-v1:0 \
+        --body "{\"textToImageParams\":{\"text\":\"$prompt\",\"negativeText\":\"do not include textual data of any kind\"},\"taskType\":\"TEXT_IMAGE\",\"imageGenerationConfig\":{\"cfgScale\":$cfg_scale,\"seed\":$seed,\"width\":2720,\"height\":1520,\"numberOfImages\":3}}" \
+        --cli-binary-format raw-in-base64-out \
+        --region us-east-1 \
+        --profile sandbox \
+        invoke-model-output.txt
+    
+    echo "Processing response..."
+    jq -r '.images[0]' ./invoke-model-output.txt | base64 -d > "$file_path"
+    
+    rm invoke-model-output.txt
+    
+    if command -v kitten &> /dev/null && command -v magick &> /dev/null; then
+        echo "Displaying preview (50% scale)..."
+        magick "$file_path" -resize 50% - | kitten icat
+    elif command -v kitten &> /dev/null; then
+        echo "Displaying preview (full size - install ImageMagick for scaled preview)..."
+        kitten icat "$file_path"
+    else
+        echo "Note: Install Kitty terminal and ImageMagick for image preview"
+    fi
+    
+    if command -v gsettings &> /dev/null; then
+        echo ""
+        echo -n "Would you like to set this as your desktop wallpaper? [Y/n]: "
+        read -r set_wallpaper_response
+        
+        if [[ -z "$set_wallpaper_response" || "$set_wallpaper_response" =~ ^[Yy] ]]; then
+            echo "Setting as desktop wallpaper..."
+            gsettings set org.gnome.desktop.background picture-uri "file:///$file_path"
+            gsettings set org.gnome.desktop.background picture-uri-dark "file:///$file_path"
+            echo "Wallpaper set successfully!"
+        else
+            echo "Wallpaper not set as desktop background."
+        fi
+    else
+        echo "Note: GNOME desktop not detected, wallpaper saved but not set"
+    fi
+    
+    echo ""
+    echo "Wallpaper saved to: $file_path"
+}
 
-rm invoke-model-output.txt
-
-kitten icat $file_path
-
-gsettings set org.gnome.desktop.background picture-uri "file:///$file_path"
-gsettings set org.gnome.desktop.background picture-uri-dark "file:///$file_path"
-
+main "$@"

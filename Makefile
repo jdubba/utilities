@@ -9,6 +9,7 @@ SRCDIR := src
 SCRIPTS := configure-github \
            configure-github-repo \
            install-fonts \
+           new-wallpaper \
            register-github-gpgkey
 
 # Full paths for source and destination
