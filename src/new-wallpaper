@@ -98,12 +98,17 @@ main() {
     cfg_scale=8.0
     seed=$RANDOM
     
+        # --model-id amazon.nova-canvas-v1:0 #/ima \
+        # --body "{\"textToImageParams\":{\"text\":\"$prompt\",\"negativeText\":\"do not include textual data of any kind\"},\"taskType\":\"TEXT_IMAGE\",\"imageGenerationConfig\":{\"cfgScale\":$cfg_scale,\"seed\":$seed,\"width\":2720,\"height\":1520,\"numberOfImages\":3}}" \
+
+        # --model-id amazon.titan-image-generator-v2:0 \
+        # --body "{\"textToImageParams\":{\"text\":\"$prompt\",\"negativeText\":\"do not include textual data of any kind\"},\"taskType\":\"TEXT_IMAGE\",\"imageGenerationConfig\":{\"cfgScale\":$cfg_scale,\"seed\":$seed,\"width\":1408,\"height\":768,\"numberOfImages\":3}}" \
     echo "Calling AWS Bedrock API..."
     aws bedrock-runtime invoke-model \
-        --model-id amazon.nova-canvas-v1:0 \
-        --body "{\"textToImageParams\":{\"text\":\"$prompt\",\"negativeText\":\"do not include textual data of any kind\"},\"taskType\":\"TEXT_IMAGE\",\"imageGenerationConfig\":{\"cfgScale\":$cfg_scale,\"seed\":$seed,\"width\":2720,\"height\":1520,\"numberOfImages\":3}}" \
+        --model-id stability.stable-image-ultra-v1:1 \
+        --body "{\"prompt\":\"$prompt\",\"mode\":\"text-to-image\",\"aspect_ratio\":\"16:9\",\"output_format\":\"jpeg\"}" \
         --cli-binary-format raw-in-base64-out \
-        --region us-east-1 \
+        --region us-west-2 \
         --profile sandbox \
         invoke-model-output.txt
     
