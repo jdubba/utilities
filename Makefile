@@ -10,7 +10,8 @@ SCRIPTS := configure-github \
            configure-github-repo \
            install-fonts \
            new-wallpaper \
-           register-github-gpgkey
+           register-github-gpgkey \
+		   hpa
 
 # Full paths for source and destination
 SRC_SCRIPTS := $(addprefix $(SRCDIR)/,$(SCRIPTS))
