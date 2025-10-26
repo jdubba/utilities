@@ -12,6 +12,7 @@ SCRIPTS := configure-github \
            new-wallpaper \
            register-github-gpgkey \
 		   hpa
+		   hypr
 
 # Full paths for source and destination
 SRC_SCRIPTS := $(addprefix $(SRCDIR)/,$(SCRIPTS))
