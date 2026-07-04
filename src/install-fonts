@@ -46,7 +46,8 @@ InstallGoogleFont Orbitron "https://fonts.googleapis.com/css2?family=Orbitron:wg
 InstallGoogleFont Audiowide "https://fonts.googleapis.com/css2?family=Audiowide&display=swap"
 InstallGoogleFont Geo "https://fonts.googleapis.com/css2?family=Geo:ital@0;1&display=swap"
 #InstallGoogleFont ShareTechMono "https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap"
-
+InstallGoogleFont Roboto "https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap"
+InstallGoogleFont DM+Sans "https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap"
 # NOTE:  Refresh font cache
 fc-cache -f ~/.fonts
 
