@@ -4,7 +4,7 @@ InstallNerdFonts() {
     for item in "$@"; do                                                                                                                                                                                                                                                                                                                       
         if [[ ! -d "$HOME/.fonts/$item" ]]; then 
             mkdir -p "$HOME/.fonts/$item"
-            xh --download "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/$item.tar.xz"
+            curl -L -o "$item.tar.xz" "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/$item.tar.xz"
             
             tar -C "$HOME/.fonts/$item" -xJvf "$item.tar.xz"
 
@@ -22,7 +22,7 @@ InstallGoogleFont() {
         pushd .
         cd "$HOME/.fonts/$1"
         
-        xh --download -o font-def.css -v "$2" 
+        curl -L -o font-def.css "$2"
 
         curl --remote-name-all $(cat font-def.css | grep -Eo "(http|https)://[a-zA-Z0-9./?=_%:-]*")
 

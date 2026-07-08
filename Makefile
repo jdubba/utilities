@@ -5,14 +5,8 @@ PREFIX := $(HOME)/.local
 BINDIR := $(PREFIX)/bin
 SRCDIR := src
 
-# List of scripts to install
-SCRIPTS := configure-github \
-           configure-github-repo \
-           install-fonts \
-           new-wallpaper \
-           register-github-gpgkey \
-		   hpa
-		   hypr
+# List of scripts to install (all files in SRCDIR are picked up automatically)
+SCRIPTS := $(notdir $(wildcard $(SRCDIR)/*))
 
 # Full paths for source and destination
 SRC_SCRIPTS := $(addprefix $(SRCDIR)/,$(SCRIPTS))

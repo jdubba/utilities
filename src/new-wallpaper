@@ -15,6 +15,7 @@ get_xdg_pictures_dir() {
 
 load_config() {
     if [[ -f "$CONFIG_FILE" ]]; then
+        # shellcheck source=/dev/null
         source "$CONFIG_FILE"
     fi
 }
@@ -66,6 +67,127 @@ EOF
     echo ""
 }
 
+display_preview() {
+    local path="$1"
+
+    if command -v chafa &> /dev/null; then
+        echo "Displaying preview..."
+        chafa "$path"
+    elif command -v kitten &> /dev/null; then
+        echo "Displaying preview..."
+        if command -v magick &> /dev/null; then
+            magick "$path" -resize 50% - | kitten icat
+        else
+            kitten icat "$path"
+        fi
+    elif command -v viu &> /dev/null; then
+        echo "Displaying preview..."
+        viu "$path"
+    elif command -v img2sixel &> /dev/null; then
+        echo "Displaying preview..."
+        img2sixel "$path"
+    else
+        echo "Note: Install 'chafa' for a terminal-neutral image preview"
+    fi
+}
+
+normalize_resolution() {
+    local path="$1"
+    local target_w="$2"
+    local target_h="$3"
+
+    local -a im identify_cmd
+    if command -v magick &> /dev/null; then
+        im=(magick)
+        identify_cmd=(magick identify)
+    elif command -v convert &> /dev/null; then
+        im=(convert)
+        identify_cmd=(identify)
+    else
+        echo "Note: ImageMagick not found; skipping exact ${target_w}x${target_h} normalization"
+        return
+    fi
+
+    local before
+    before=$("${identify_cmd[@]}" -format '%wx%h' "$path" 2>/dev/null || echo "unknown")
+
+    if [[ "$before" == "${target_w}x${target_h}" ]]; then
+        echo "Resolution already ${target_w}x${target_h}; no scaling needed"
+        return
+    fi
+
+    # Resize to cover the target, then center-crop to the exact dimensions.
+    # Preserves aspect ratio without distortion; trims minimal overflow.
+    local tmp
+    tmp=$(mktemp)
+    if "${im[@]}" "$path" -resize "${target_w}x${target_h}^" -gravity center \
+        -extent "${target_w}x${target_h}" "jpg:$tmp" 2>/dev/null; then
+        mv "$tmp" "$path"
+        echo "Normalized resolution: ${before} -> ${target_w}x${target_h}"
+    else
+        rm -f "$tmp"
+        echo "Warning: failed to normalize resolution; keeping original (${before})"
+    fi
+}
+
+detect_compositor() {
+    if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
+        echo "hyprland"
+    elif [[ "${XDG_CURRENT_DESKTOP:-}" == *Hyprland* ]]; then
+        echo "hyprland"
+    elif command -v hyprctl &> /dev/null && pgrep -x Hyprland &> /dev/null; then
+        echo "hyprland"
+    elif [[ "${XDG_CURRENT_DESKTOP:-}" == *GNOME* || "${XDG_SESSION_DESKTOP:-}" == *gnome* ]]; then
+        echo "gnome"
+    elif command -v gsettings &> /dev/null; then
+        echo "gnome"
+    else
+        echo "unknown"
+    fi
+}
+
+set_wallpaper_gnome() {
+    local path="$1"
+
+    echo "Setting as desktop wallpaper (GNOME)..."
+    gsettings set org.gnome.desktop.background picture-uri "file://$path"
+    gsettings set org.gnome.desktop.background picture-uri-dark "file://$path"
+    echo "Wallpaper set successfully!"
+}
+
+set_wallpaper_hyprland() {
+    local path="$1"
+
+    # Wallpaper persistence is owned by the dotfiles layer (its hyprpaper config
+    # plus the ~/.config/background symlink). We only set the live wallpaper over
+    # IPC by delegating to hypr-wall.sh, which never writes any config. Do NOT
+    # write hyprpaper config from here.
+    if ! command -v hypr-wall.sh &> /dev/null; then
+        echo "Note: hypr-wall.sh not found on PATH; wallpaper saved but not set"
+        return
+    fi
+
+    # hypr-wall.sh errors out if the daemon is unreachable, so start hyprpaper
+    # if it isn't already running.
+    if ! pgrep -x hyprpaper &> /dev/null; then
+        if command -v hyprpaper &> /dev/null; then
+            echo "hyprpaper is not running; starting it..."
+            nohup hyprpaper &> /dev/null &
+            sleep 1
+        else
+            echo "Note: hyprpaper is not installed; wallpaper saved but not set"
+            return
+        fi
+    fi
+
+    echo "Setting as desktop wallpaper (Hyprland/hyprpaper)..."
+    if hypr-wall.sh "$path"; then
+        echo "Wallpaper set successfully!"
+    else
+        echo "Warning: hypr-wall.sh failed to set the wallpaper"
+    fi
+}
+
 main() {
     if [[ $# -eq 0 ]]; then
         echo "Usage: $(basename "$0") <prompt>"
@@ -90,58 +212,99 @@ main() {
     echo "Generating wallpaper with prompt: $prompt"
     echo "File ID: $file_id"
     
-    file_path="$WALLPAPER_DIR/${file_id}.png"
+    file_path="$WALLPAPER_DIR/${file_id}.jpg"
     
     echo "File Path: $file_path"
     echo ""
-    
-    cfg_scale=8.0
-    seed=$RANDOM
-    
-        # --model-id amazon.nova-canvas-v1:0 #/ima \
-        # --body "{\"textToImageParams\":{\"text\":\"$prompt\",\"negativeText\":\"do not include textual data of any kind\"},\"taskType\":\"TEXT_IMAGE\",\"imageGenerationConfig\":{\"cfgScale\":$cfg_scale,\"seed\":$seed,\"width\":2720,\"height\":1520,\"numberOfImages\":3}}" \
 
-        # --model-id amazon.titan-image-generator-v2:0 \
-        # --body "{\"textToImageParams\":{\"text\":\"$prompt\",\"negativeText\":\"do not include textual data of any kind\"},\"taskType\":\"TEXT_IMAGE\",\"imageGenerationConfig\":{\"cfgScale\":$cfg_scale,\"seed\":$seed,\"width\":1408,\"height\":768,\"numberOfImages\":3}}" \
-    echo "Calling AWS Bedrock API..."
+    # Model + region config (overridable via new-wallpaper.conf)
+    gen_model_id="${GEN_MODEL_ID:-stability.stable-image-ultra-v1:1}"
+    gen_region="${GEN_REGION:-us-west-2}"
+    upscale_model_id="${UPSCALE_MODEL_ID:-us.stability.stable-conservative-upscale-v1:0}"
+    upscale_region="${UPSCALE_REGION:-us-east-1}"
+    upscale_creativity="${UPSCALE_CREATIVITY:-0.2}"
+
+    # Final image normalized to exact 4K UHD (overridable via new-wallpaper.conf)
+    uhd_width="${UHD_WIDTH:-3840}"
+    uhd_height="${UHD_HEIGHT:-2160}"
+
+    # Temp files for API payloads/responses (auto-cleaned on exit)
+    gen_out=$(mktemp)
+    gen_b64=$(mktemp)
+    upscale_body=$(mktemp)
+    upscale_out=$(mktemp)
+    trap 'rm -f "$gen_out" "$gen_b64" "$upscale_body" "$upscale_out"' EXIT
+
+    # 1) Generate a ~1MP 16:9 base image with Stable Image Ultra
+    echo "Calling AWS Bedrock API (generate)..."
+    gen_body=$(jq -n \
+        --arg prompt "$prompt" \
+        '{prompt: $prompt, mode: "text-to-image", aspect_ratio: "16:9", output_format: "jpeg"}')
+
     aws bedrock-runtime invoke-model \
-        --model-id stability.stable-image-ultra-v1:1 \
-        --body "{\"prompt\":\"$prompt\",\"mode\":\"text-to-image\",\"aspect_ratio\":\"16:9\",\"output_format\":\"jpeg\"}" \
+        --model-id "$gen_model_id" \
+        --body "$gen_body" \
         --cli-binary-format raw-in-base64-out \
-        --region us-west-2 \
-        --profile sandbox \
-        invoke-model-output.txt
-    
-    echo "Processing response..."
-    jq -r '.images[0]' ./invoke-model-output.txt | base64 -d > "$file_path"
-    
-    rm invoke-model-output.txt
-    
-    if command -v kitten &> /dev/null && command -v magick &> /dev/null; then
-        echo "Displaying preview (50% scale)..."
-        magick "$file_path" -resize 50% - | kitten icat
-    elif command -v kitten &> /dev/null; then
-        echo "Displaying preview (full size - install ImageMagick for scaled preview)..."
-        kitten icat "$file_path"
-    else
-        echo "Note: Install Kitty terminal and ImageMagick for image preview"
+        --region "$gen_region" \
+        "$gen_out" > /dev/null
+
+    # Verify generation returned an image before upscaling
+    jq -r '.images[0] // empty' "$gen_out" > "$gen_b64"
+    if [[ ! -s "$gen_b64" ]]; then
+        echo "Error: image generation returned no image." >&2
+        echo "  finish_reasons: $(jq -c '.finish_reasons // []' "$gen_out" 2>/dev/null || echo '[]')" >&2
+        exit 1
     fi
+
+    # 2) Upscale to ~4K with Conservative Upscale (minimal alteration; preserves palette)
+    echo "Upscaling to 4K (Conservative Upscale)..."
+    jq -n \
+        --rawfile image "$gen_b64" \
+        --arg prompt "$prompt" \
+        --argjson creativity "$upscale_creativity" \
+        '{image: ($image | rtrimstr("\n")), prompt: $prompt, creativity: $creativity, output_format: "jpeg"}' \
+        > "$upscale_body"
+
+    aws bedrock-runtime invoke-model \
+        --model-id "$upscale_model_id" \
+        --body "file://$upscale_body" \
+        --cli-binary-format raw-in-base64-out \
+        --region "$upscale_region" \
+        "$upscale_out" > /dev/null
+
+    # Verify upscale returned an image
+    if ! jq -e '.images[0] // empty | length > 0' "$upscale_out" >/dev/null 2>&1; then
+        echo "Error: upscale returned no image." >&2
+        echo "  finish_reasons: $(jq -c '.finish_reasons // []' "$upscale_out" 2>/dev/null || echo '[]')" >&2
+        exit 1
+    fi
+
+    echo "Processing response..."
+    jq -r '.images[0]' "$upscale_out" | base64 -d > "$file_path"
+
+    # Snap to exact 4K UHD (cover + center-crop; no distortion)
+    normalize_resolution "$file_path" "$uhd_width" "$uhd_height"
     
-    if command -v gsettings &> /dev/null; then
+    display_preview "$file_path"
+
+    compositor=$(detect_compositor)
+
+    if [[ "$compositor" == "unknown" ]]; then
+        echo ""
+        echo "Note: Neither GNOME nor Hyprland detected; wallpaper saved but not set"
+    else
         echo ""
         echo -n "Would you like to set this as your desktop wallpaper? [Y/n]: "
         read -r set_wallpaper_response
-        
+
         if [[ -z "$set_wallpaper_response" || "$set_wallpaper_response" =~ ^[Yy] ]]; then
-            echo "Setting as desktop wallpaper..."
-            gsettings set org.gnome.desktop.background picture-uri "file:///$file_path"
-            gsettings set org.gnome.desktop.background picture-uri-dark "file:///$file_path"
-            echo "Wallpaper set successfully!"
+            case "$compositor" in
+                gnome) set_wallpaper_gnome "$file_path" ;;
+                hyprland) set_wallpaper_hyprland "$file_path" ;;
+            esac
         else
             echo "Wallpaper not set as desktop background."
         fi
-    else
-        echo "Note: GNOME desktop not detected, wallpaper saved but not set"
     fi
     
     echo ""

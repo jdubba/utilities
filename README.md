@@ -71,16 +71,15 @@ new-wallpaper "a serene mountain landscape at sunset"
 - Configuration saved to `~/.local/etc/new-wallpaper.conf`
 - Automatic directory creation if needed
 - Custom wallpaper storage locations
-- Scaled preview (50% size) when ImageMagick is available
+- Terminal-neutral image preview (uses `chafa`, with Kitty/viu/sixel fallbacks)
 
 **Configuration**: On first run, the script will prompt you to select a directory for storing wallpapers (defaults to your XDG Pictures directory + `/wallpapers`). The configuration is saved for future runs.
 
 **Note**: This script requires:
 - AWS CLI configured with a "sandbox" profile
 - Access to Amazon Bedrock in us-east-1 region
-- GNOME desktop environment (uses gsettings) - optional
-- Kitty terminal (for image preview) - optional
-- ImageMagick (for 50% scaled preview) - optional
+- GNOME (uses `gsettings`) or Hyprland (uses `hyprctl`/`hyprpaper`) to set the wallpaper - optional, auto-detected
+- `chafa` for a terminal-neutral image preview (falls back to `kitten`/`viu`/`img2sixel`) - optional
 
 ## Installation
 
@@ -115,7 +114,7 @@ Add this line to your shell configuration file (`~/.bashrc`, `~/.zshrc`, etc.) f
 ### Script-Specific Dependencies
 
 #### Font Installation
-- `xh` or `curl` - HTTP client for downloading
+- `curl` - HTTP client for downloading
 - `tar` - Archive extraction
 
 #### Wallpaper Generation
@@ -123,9 +122,10 @@ Add this line to your shell configuration file (`~/.bashrc`, `~/.zshrc`, etc.) f
 - `jq` - JSON processor
 - `uuidgen` - UUID generator
 - `xdg-user-dir` - XDG directory detection (usually pre-installed)
-- `magick` - ImageMagick for scaled preview (optional)
-- `kitten` - Kitty terminal image viewer (optional)
-- `gsettings` - GNOME settings manager (optional)
+- `chafa` - Terminal-neutral image preview (optional, recommended)
+- `kitten` / `viu` / `img2sixel` - Alternative image previewers (optional)
+- `gsettings` - GNOME wallpaper setter (optional)
+- `hyprctl` / `hyprpaper` - Hyprland wallpaper setter (optional)
 
 #### GitHub Tools
 - `gh` - GitHub CLI (for register-github-gpgkey)

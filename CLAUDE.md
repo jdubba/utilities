@@ -22,6 +22,9 @@ This is a collection of shell script utilities for system configuration, includi
   - Uses XDG Pictures directory as default (typically ~/Pictures/wallpapers)
   - Saves configuration to `~/.local/etc/new-wallpaper.conf`
   - Supports custom wallpaper directories
+  - Shows a terminal-neutral preview via chafa (falls back to kitten/viu/img2sixel)
+  - Auto-detects the desktop environment and sets the wallpaper accordingly (GNOME via gsettings; Hyprland by delegating to `hypr-wall.sh`)
+  - On Hyprland it delegates to `hypr-wall.sh`, which sets the wallpaper on every connected monitor over IPC only (runtime state, reverts on daemon restart). It does **not** modify `hyprpaper.conf` — persistence is owned by the dotfiles layer
 
 ## Development Commands
 
@@ -46,16 +49,17 @@ Scripts can be tested directly by running them:
 The scripts use the following external tools:
 - `gpg` - For GPG key generation and management
 - `git` - For repository configuration
-- `xh` - HTTP client for downloading fonts (alternative to curl/wget)
-- `curl` - For downloading font files
+- `curl` - For downloading font files and font archives
 - `tar` - For extracting font archives
 - `aws` - AWS CLI for Bedrock API access (new-wallpaper)
 - `jq` - JSON processor for parsing AWS response (new-wallpaper)
 - `uuidgen` - Generate unique IDs for wallpaper files (new-wallpaper)
 - `xdg-user-dir` - XDG directory detection for default Pictures folder (new-wallpaper)
-- `magick` - ImageMagick for scaling preview images to 50% (new-wallpaper, optional)
-- `kitten` - Kitty terminal image viewer (new-wallpaper, optional)
+- `chafa` - Terminal-neutral image previewer, auto-detects the terminal's graphics protocol (new-wallpaper, optional, recommended)
+- `kitten` / `viu` / `img2sixel` - Fallback image previewers used when chafa is unavailable (new-wallpaper, optional)
+- `magick` - ImageMagick, used to scale the preview when falling back to `kitten icat` (new-wallpaper, optional)
 - `gsettings` - GNOME settings tool for setting wallpaper (new-wallpaper, optional)
+- `hyprctl` / `hyprpaper` - Hyprland wallpaper daemon/control for setting wallpaper (new-wallpaper, optional)
 
 ## Important Considerations
 
